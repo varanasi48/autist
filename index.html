@@ -41,6 +41,7 @@ canvas{display:block;width:100%;height:100%}
 <div id="sessionStatus">Waiting for session trigger</div>
 <style>
 #kidTrigger{
+ display:none;
  position:fixed;left:18px;top:18px;z-index:20;border:0;border-radius:14px;
  padding:11px 14px;background:rgba(255,255,255,.94);color:#111;
  font:700 14px system-ui,sans-serif;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.18)
@@ -51,6 +52,7 @@ canvas{display:block;width:100%;height:100%}
  padding:7px 10px;border-radius:10px;font:600 12px system-ui,sans-serif;pointer-events:none
 }
 #recenterBtn{
+ display:none;
  position:fixed;right:18px;top:18px;z-index:20;border:0;border-radius:14px;
  padding:11px 14px;background:rgba(0,0,0,.62);color:#fff;
  font:700 14px system-ui,sans-serif;backdrop-filter:blur(5px)
@@ -71,8 +73,8 @@ canvas{display:block;width:100%;height:100%}
 
 <div id="hint">Move your phone/head to look around</div>
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc8d0d2);
@@ -192,7 +194,7 @@ kid.position.set(4.95,0,4.15);
 kid.visible = false;
 
 // Real rigged humanoid GLB (CC0). Loaded remotely so this remains a single GitHub Pages HTML file.
-const REAL_CHARACTER_URL = "https://raw.githubusercontent.com/programasweights/avatar/main/public/assets/character.glb";
+const REAL_CHARACTER_URL = "https://cdn.3dassets.dev/assets/32790/v1/model.glb";
 let characterReady=false;
 let characterMixer=null;
 let characterRoot=null;
@@ -201,18 +203,22 @@ function fitCharacter(root){
   const size=box.getSize(new THREE.Vector3());
   const center=box.getCenter(new THREE.Vector3());
   root.position.x-=center.x; root.position.z-=center.z; root.position.y-=box.min.y;
-  if(size.y>0) root.scale.setScalar(1.72/size.y);
+  if(size.y>0) root.scale.setScalar(1.55/size.y);
 }
-const loader=new THREE.GLTFLoader();
-loader.load(REAL_CHARACTER_URL,(gltf)=>{
+const loader = (typeof THREE.GLTFLoader === "function") ? new THREE.GLTFLoader() : null;
+if(loader) loader.load(REAL_CHARACTER_URL,(gltf)=>{
   characterRoot=gltf.scene; fitCharacter(characterRoot);
   characterRoot.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
   kid.add(characterRoot); characterReady=true;
+  if(kidTriggered){ kid.visible=true; if(kidWalkStart===null) kidWalkStart=performance.now(); }
   if(gltf.animations&&gltf.animations.length){characterMixer=new THREE.AnimationMixer(characterRoot);characterMixer.clipAction(gltf.animations[0]).play();}
-  document.getElementById('sessionStatus').textContent='Real 3D character ready — press Start Kid Entry';
+  document.getElementById('sessionStatus').textContent='Real child character ready — press Start Kid Entry';
 },undefined,()=>{
-  document.getElementById('sessionStatus').textContent='Real 3D character failed to load — check internet connection';
+  document.getElementById('sessionStatus').textContent='Child model failed to load — tap Retry Kid Entry.'; document.getElementById('kidTrigger').disabled=false; document.getElementById('kidTrigger').textContent='▶ Retry Kid Entry'; kid.visible=false;
 });
+else {
+  document.getElementById('sessionStatus').textContent='Room ready — character loader unavailable';
+}
 
 const kidStart = new THREE.Vector3(4.95,0,4.15);
 const kidEnd = new THREE.Vector3(1.65,0,2.55);
@@ -222,13 +228,14 @@ let kidTriggered=false;
 
 function animateKid(now){
   if(characterMixer) characterMixer.update(0.016);
-  if(!kidTriggered || !characterReady) return;
+  if(!kidTriggered) return;
   if(kidWalkStart===null) kidWalkStart=now;
   const elapsed=(now-kidWalkStart)/1000;
   const duration=5.0;
   const t=Math.min(elapsed/duration,1);
   const ease=t*t*(3-2*t);
   kid.position.lerpVectors(kidStart,kidEnd,ease);
+  kid.position.y = 0.025 + Math.abs(Math.sin(elapsed*7.0))*0.025;
   const dx=kidEnd.x-kidStart.x,dz=kidEnd.z-kidStart.z;
   kid.rotation.y=Math.atan2(dx,dz);
   if(t>=1 && !kidFinished){
@@ -525,23 +532,27 @@ function startMotion(){
  if(screen.orientation?.lock) screen.orientation.lock('landscape').catch(()=>{});
  deviceReady=true;
  document.getElementById('start').style.display='none';
- document.getElementById('sessionStatus').textContent='Room ready — press Start Kid Entry';
+ document.getElementById('kidTrigger').style.display='block';
+ document.getElementById('recenterBtn').style.display='block';
+ document.getElementById('sessionStatus').textContent='Room ready — real child model loads from remote asset source';
 }
 
 document.getElementById("recenterBtn").addEventListener("click",recenter);
 
 document.getElementById('kidTrigger').addEventListener('click',()=>{
-  if(!deviceReady) return;
-  if(!characterReady){ document.getElementById('sessionStatus').textContent='Real 3D character is still loading…'; return; }
   kidTriggered=true;
   kidWalkStart=null;
   kidFinished=false;
-  kid.visible=true;
+  kid.position.copy(kidStart);
+  kid.visible=characterReady;
   document.getElementById('kidTrigger').disabled=true;
   document.getElementById('kidTrigger').textContent='Kid entering…';
-  document.getElementById('sessionStatus').textContent='Session started — watch the child enter';
+  document.getElementById('sessionStatus').textContent=characterReady ? 'Session started — watch the child enter' : 'Loading the real child — entry will begin automatically…';
 });
 
+function enterRoom(){
+  try{ startMotion(); }catch(e){ document.getElementById('sessionStatus').textContent='Room started'; document.getElementById('start').style.display='none'; document.getElementById('kidTrigger').style.display='block'; document.getElementById('recenterBtn').style.display='block'; }
+}
 document.getElementById('startBtn').onclick=async()=>{
  try{
   if(typeof DeviceOrientationEvent!=='undefined' &&
