@@ -384,7 +384,7 @@ function startMotion(){
  document.getElementById('start').style.display='none';
 }
 
-document.getElementById("recenterBtn").addEventListener("click",recenter);\n\ndocument.getElementById('startBtn').onclick=async()=>{
+document.getElementById("recenterBtn").addEventListener("click",recenter);document.getElementById('startBtn').onclick=async()=>{
  try{
   if(typeof DeviceOrientationEvent!=='undefined' &&
      typeof DeviceOrientationEvent.requestPermission==='function'){
