@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Living Room 3D — Phase 1</title>
+<title>Living Room 3D — Realistic 3D V2</title>
 <style>
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111}
 canvas{display:block;width:100%;height:100%}
@@ -54,148 +54,180 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-// ---------- materials ----------
+// ---------- realistic materials ----------
 const mat = (color, rough=.65, metal=0) =>
- new THREE.MeshStandardMaterial({color,roughness:rough,metalness:metal});
+  new THREE.MeshStandardMaterial({color, roughness:rough, metalness:metal});
 
-const wallMat = mat(0xe9e3d9,.9);
-const floorMat = mat(0x9b7759,.72);
-const wood = mat(0x684832,.55);
-const darkWood = mat(0x35261d,.48);
-const fabric = mat(0xb8a99b,.92);
-const cream = mat(0xd7c9b9,.96);
-const rust = mat(0x9b5944,.9);
-const black = mat(0x171717,.28,.35);
+const wallMat = mat(0xe8e0d5,.92);
+const plaster = mat(0xd9d0c4,.98);
+const floorMat = mat(0xddd4c7,.34);
+const marble = mat(0xd8d1c6,.25);
+const wood = mat(0x6b452d,.48);
+const walnut = mat(0x4b2d1d,.40);
+const slat = mat(0x3a2418,.44);
+const fabric = mat(0xb8aa9b,1);
+const fabricLight = mat(0xd0c2b3,.98);
+const rust = mat(0x9a5941,.88);
+const black = mat(0x121212,.23,.55);
+const metal = mat(0x6b6b67,.22,.78);
 const glass = new THREE.MeshPhysicalMaterial({
- color:0x9bb8c2,transparent:true,opacity:.26,roughness:.12,metalness:0
+  color:0xaec5cc, transparent:true, opacity:.22, roughness:.08, metalness:0
 });
-const green = mat(0x3f6b48,.95);
-const leaf2 = mat(0x66885b,.95);
-const ceramic = mat(0xd7d0c2,.7);
+const leaf = mat(0x3e6844,.96);
+const leafLight = mat(0x6d8a5b,.96);
+const ceramic = mat(0xd8d0c4,.72);
+const warm = mat(0xe5bd76,.55,.05);
 
-// ---------- helpers ----------
 function box(name,x,y,z,sx,sy,sz,material,cast=true){
- const g=new THREE.BoxGeometry(sx,sy,sz);
- const m=new THREE.Mesh(g,material);
- m.name=name;m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;scene.add(m);return m;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),material);
+  m.name=name; m.position.set(x,y,z); m.castShadow=cast; m.receiveShadow=true;
+  scene.add(m); return m;
 }
 function cyl(name,x,y,z,r,h,material,seg=32){
- const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),material);
- m.name=name;m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),material);
+  m.name=name; m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); return m;
 }
 function sphere(name,x,y,z,r,material){
- const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,16),material);
- m.name=name;m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
+  const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,16),material);
+  m.name=name; m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); return m;
 }
-function plant(x,z,scale=1){
- cyl("Plant pot",x,.48,z,.34,.62,ceramic);
- for(let i=0;i<8;i++){
-  const a=i*Math.PI/4;
-  const leaf=new THREE.Mesh(new THREE.SphereGeometry(.22,12,8),green);
-  leaf.scale.set(.7,1.7,.35);leaf.position.set(x+Math.cos(a)*.25,.98,z+Math.sin(a)*.25);
-  leaf.rotation.z=-Math.cos(a)*.55;leaf.rotation.x=Math.sin(a)*.35;
-  leaf.castShadow=true;scene.add(leaf);
- }
- cyl("Plant stem",x,.95,z,.055,1.0,darkWood,12);
+function roundedBox(name,x,y,z,sx,sy,sz,material,r=.12){
+  const shape=new THREE.Shape();
+  const w=sx/2,h=sy/2;
+  shape.moveTo(-w+r,-h); shape.lineTo(w-r,-h);
+  shape.quadraticCurveTo(w,-h,w,-h+r); shape.lineTo(w,h-r);
+  shape.quadraticCurveTo(w,h,w-r,h); shape.lineTo(-w+r,h);
+  shape.quadraticCurveTo(-w,h,-w,h-r); shape.lineTo(-w,-h+r);
+  shape.quadraticCurveTo(-w,-h,-w+r,-h);
+  const geo=new THREE.ExtrudeGeometry(shape,{depth:sz,bevelEnabled:true,bevelSize:.035,bevelThickness:.035,bevelSegments:2});
+  geo.center();
+  const m=new THREE.Mesh(geo,material);
+  m.name=name; m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); return m;
 }
-
-// ---------- room shell ----------
-box("Floor",0,-.12,0,18,.24,18,floorMat,false);
-box("Back wall",0,4,-3.8,18,8,.22,wallMat,false);
-box("Left wall",-8,4,0,.22,8,15,wallMat,false);
-box("Right wall",8,4,0,.22,8,15,wallMat,false);
-box("Ceiling",0,8,0,18,.18,18,wallMat,false);
-
-// wood feature wall
-for(let x=-4.9;x<=4.9;x+=.32) box("Wood slat",x,3.15,-3.62,.13,6.2,.12,darkWood,false);
-box("Feature backing",0,3.15,-3.55,10.3,6.25,.08,wood,false);
-
-// ---------- window + balcony ----------
-box("Window frame",-5.55,3.55,-3.42,3.9,4.0,.16,black,false);
-box("Window glass",-5.55,3.55,-3.32,3.55,3.65,.05,glass,false);
-for(const x of [-7.25,-5.55,-3.85]) box("Window mullion",x,3.55,-3.24,.07,3.65,.08,black,false);
-box("Window sill",-5.55,1.7,-3.25,4.0,.18,.38,wood,false);
-for(let i=0;i<6;i++){
- const b=new THREE.Mesh(new THREE.BoxGeometry(.09,3.7,.08),cream);
- b.position.set(-7.35+i*.72,3.5,-3.05);b.castShadow=true;scene.add(b);
+function plant(x,z,s=1){
+  cyl("Plant pot",x,.43,z,.34*s,.55*s,ceramic);
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI*2/12;
+    const p=new THREE.Mesh(new THREE.SphereGeometry(.22*s,14,10), i%3?leaf:leafLight);
+    p.scale.set(.55,1.8,.30);
+    p.position.set(x+Math.cos(a)*.25*s,.94*s,z+Math.sin(a)*.25*s);
+    p.rotation.z=-Math.cos(a)*.6; p.rotation.x=Math.sin(a)*.35;
+    p.castShadow=true; scene.add(p);
+  }
 }
 
-// balcony suggestion
-box("Balcony rail",-5.55,1.35,-2.65,4.2,.12,.12,black);
-for(let x=-7.35;x<=-3.75;x+=.55) cyl("Balcony rail post",x,.75,-2.65,.035,1.25,black,12);
+// ---------- architectural shell ----------
+box("Floor",0,-.12,0,18,.24,18,marble,false);
+box("Back wall",0,4,-4.2,18,8,.22,wallMat,false);
+box("Left wall",-8,4,0,.22,8,16,wallMat,false);
+box("Right wall",8,4,0,.22,8,16,wallMat,false);
+box("Ceiling",0,8,0,18,.18,18,plaster,false);
+
+// recessed ceiling trim
+box("Ceiling border",0,7.72,-3.85,17.2,.12,.18,wood,false);
+box("Ceiling border",0,7.72,3.75,17.2,.12,.18,wood,false);
+box("Ceiling border",-7.75,7.72,0,.18,.12,7.7,wood,false);
+box("Ceiling border",7.75,7.72,0,.18,.12,7.7,wood,false);
+
+// ---------- window ----------
+box("Window frame",-5.25,3.65,-4.03,4.55,4.45,.18,black,false);
+box("Window glass",-5.25,3.65,-3.90,4.18,4.05,.05,glass,false);
+for(const x of [-7.32,-5.25,-3.18]) box("Window mullion",x,3.65,-3.82,.07,4.0,.08,black,false);
+box("Window sill",-5.25,1.53,-3.76,4.7,.18,.42,wood,false);
+
+// Curtains with layered panels
+box("Curtain L",-7.65,3.7,-3.62,.55,4.65,.18,fabricLight,false);
+box("Curtain R",-2.85,3.7,-3.62,.55,4.65,.18,fabricLight,false);
 
 // ---------- door ----------
-box("Door",5.25,3.25,-3.55,2.35,5.9,.18,darkWood,false);
-box("Door inset",5.25,3.25,-3.43,1.9,5.35,.08,wood,false);
-cyl("Door handle",6.0,3.15,-3.25,.075,.28,black,20).rotation.z=Math.PI/2;
+box("Door surround",2.25,3.2,-4.02,2.65,6.25,.22,wood,false);
+box("Door",2.25,3.2,-3.87,2.22,5.82,.16,walnut,false);
+box("Door inset",2.25,3.25,-3.75,1.78,4.98,.06,wood,false);
+cyl("Door handle",3.0,3.15,-3.55,.075,.28,metal,20).rotation.z=Math.PI/2;
 
-// ---------- TV wall ----------
-box("TV console",3.35,.72,-3.15,5.5,1.05,.72,darkWood);
-box("TV",3.35,2.55,-3.15,4.4,2.5,.16,black,false);
-box("TV screen",3.35,2.55,-3.04,4.05,2.12,.025,mat(0x243e45,.2),false);
-box("TV stand",3.35,1.25,-3.0,2.0,.12,.65,black);
-for(let x=1.2;x<5.5;x+=.55) box("Shelf slat",x,3.9,-3.12,.09,1.1,.09,wood,false);
+// ---------- TV feature wall ----------
+for(let x=3.8;x<=7.55;x+=.28) box("Wood slat",x,3.55,-3.83,.11,7.1,.11,slat,false);
+box("TV stone panel",5.55,3.05,-3.72,4.75,4.25,.09,mat(0xb9afa1,.76),false);
+box("TV frame",5.55,3.35,-3.57,4.35,2.48,.13,black,false);
+const tvScreen=box("Television",5.55,3.35,-3.48,4.05,2.18,.025,mat(0x173c52,.18),false);
+box("TV console",5.55,.78,-3.45,5.0,1.0,.72,walnut);
+box("Console top",5.55,1.33,-3.43,5.2,.14,.82,wood);
+for(let x=3.2;x<=7.85;x+=1.15) box("Console divider",x,.75,-3.05,.035,.65,.03,black,false);
 
-// TV scenic glow
-const tvLight=new THREE.PointLight(0x9bbfc7,1.4,5);
-tvLight.position.set(3.35,2.55,-2.3);scene.add(tvLight);
+// illuminated shelves
+box("Shelf tower",2.35,3.6,-3.63,.65,6.5,.30,walnut,false);
+for(let y=1.45;y<=6.0;y+=1.25){
+  box("Shelf",2.35,y,-3.45,1.55,.10,.62,wood,false);
+  const l=new THREE.PointLight(0xffbd72,.42,2.2); l.position.set(2.35,y+.16,-3.0); scene.add(l);
+}
+for(let y=1.65;y<=5.75;y+=1.25){
+  plant(2.35,y>4?-.0:-.05,.45);
+}
 
 // ---------- sectional sofa ----------
-box("Sofa",-.95,.95,1.55,6.0,1.05,2.15,fabric);
-box("Sofa back",-.95,1.85,.72,6.0,2.0,.5,fabric);
-box("Sofa arm",-3.75,1.25,1.55,.48,1.7,2.15,cream);
-box("Sofa arm",1.85,1.25,1.55,.48,1.7,2.15,cream);
-for(let x=-3.0;x<=1.0;x+=1.05){
- box("Cushion",x,2.0,1.08,.88,.72,.38,cream);
-}
-box("Throw",-1.0,1.5,.92,1.15,.9,.08,rust);
+roundedBox("Sofa base",-1.55,.93,1.45,6.15,.92,2.25,fabric,.16);
+roundedBox("Sofa back",-1.55,1.82,.65,6.15,1.85,.55,fabric,.18);
+roundedBox("Sofa arm L",-4.45,1.30,1.45,.48,1.55,2.25,fabricLight,.14);
+roundedBox("Sofa arm R",1.35,1.30,1.45,.48,1.55,2.25,fabricLight,.14);
+for(let x=-3.65;x<=.35;x+=1.0) roundedBox("Sofa cushion",x,1.95,1.10,.88,.68,.42,fabricLight,.10);
+roundedBox("Throw",-1.45,1.42,.55,1.05,.78,.08,rust,.04);
 
 // ---------- coffee table ----------
-box("Table",-.05,.72,-.05,3.7,.18,1.85,wood);
-for(const x of [-1.55,1.45]) for(const z of [-.65,.65]) cyl("Table leg",x,.34,z,.12,.72,darkWood,20);
-box("Table lower shelf",-.05,.28,-.05,2.8,.12,1.25,darkWood);
-cyl("Decor bowl",-.35,.9,-.05,.28,.10,ceramic);
-for(let i=0;i<3;i++) box("Book",.5,.86+i*.035,.2,.7,.06,.48,[cream,rust,wood][i]);
+box("Table",-.05,.73,-.05,3.75,.18,1.85,wood);
+for(const x of [-1.58,1.48]) for(const z of [-.68,.68]) cyl("Table leg",x,.34,z,.105,.72,black,20);
+box("Table lower shelf",-.05,.28,-.05,2.9,.11,1.25,walnut);
+cyl("Bowl",-.25,.88,-.10,.30,.10,ceramic);
+for(let i=0;i<3;i++) box("Book",.55,.84+i*.05,.18,.75,.055,.48,[cream,fabricLight,wood][i%3]);
+cyl("Cup",.75,1.00,-.25,.12,.12,ceramic,24);
+cyl("Cup handle",.88,1.0,-.25,.065,.035,ceramic,20).rotation.z=Math.PI/2;
 
 // ---------- chair ----------
-box("Chair",-5.45,.85,.55,2.05,.8,1.9,rust);
-box("Chair back",-5.45,1.8,-.2,2.05,2.0,.42,rust);
-box("Chair arm",-6.25,1.25,.55,.3,1.35,1.9,rust);
-box("Chair arm",-4.65,1.25,.55,.3,1.35,1.9,rust);
-box("Chair cushion",-5.45,1.25,.35,1.45,.22,1.35,cream);
+roundedBox("Chair",-5.15,.85,.35,2.1,.82,1.92,rust,.16);
+roundedBox("Chair back",-5.15,1.83,-.55,2.1,2.0,.43,rust,.16);
+box("Chair leg",-5.78,.25,-.05,.10,1.0,.10,walnut);
+box("Chair leg",-4.52,.25,-.05,.10,1.0,.10,walnut);
+roundedBox("Chair cushion",-5.15,1.28,.05,1.55,.20,1.35,fabricLight,.10);
+roundedBox("Chair pillow",-5.15,1.73,-.38,.78,.58,.16,rust,.12);
 
 // ---------- rug ----------
-const rug=new THREE.Mesh(new THREE.BoxGeometry(7.2,.035,4.8),mat(0xb5a08b,1));
-rug.position.set(-.1,.02,.2);rug.receiveShadow=true;scene.add(rug);
+const rugMat=mat(0x9d8977,.97);
+const rug=new THREE.Mesh(new THREE.BoxGeometry(7.8,.045,5.0),rugMat);
+rug.position.set(-.15,.025,.35);rug.receiveShadow=true;scene.add(rug);
 
 // ---------- lamp ----------
-cyl("Lamp stand",-6.8,1.65,-1.2,.055,3.2,black,20);
-const shade=new THREE.Mesh(new THREE.CylinderGeometry(.42,.7,.65,32,true),cream);
-shade.position.set(-6.8,3.25,-1.2);shade.castShadow=true;scene.add(shade);
-const bulb=new THREE.PointLight(0xffd6a0,1.8,5);bulb.position.set(-6.8,3.0,-1.2);scene.add(bulb);
+cyl("Lamp stand",-6.75,1.65,-1.35,.055,3.2,black,20);
+const shade=new THREE.Mesh(new THREE.CylinderGeometry(.42,.72,.68,40,true),fabricLight);
+shade.position.set(-6.75,3.30,-1.35);shade.castShadow=true;scene.add(shade);
+const bulb=new THREE.PointLight(0xffd3a0,2.1,5); bulb.position.set(-6.75,3.0,-1.35); scene.add(bulb);
 
 // ---------- plants ----------
-plant(6.55,1.1,1);
-plant(-7.0,2.6,.8);
+plant(6.9,1.0,1.1);
+plant(-7.0,2.4,.9);
+plant(2.75,-.4,.75);
 
 // ---------- ceiling fan ----------
-const fanGroup=new THREE.Group(); fanGroup.position.set(0,7.45,1);
-const motor=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.22,24),black);
-fanGroup.add(motor);
+const fanGroup=new THREE.Group(); fanGroup.position.set(-.2,7.42,.8);
+fanGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.24,24),black));
 for(let i=0;i<4;i++){
- const blade=new THREE.Mesh(new THREE.BoxGeometry(2.4,.06,.28),wood);
- blade.position.x=1.25;blade.rotation.y=i*Math.PI/2;blade.castShadow=true;fanGroup.add(blade);
+  const blade=new THREE.Mesh(new THREE.BoxGeometry(2.45,.06,.30),wood);
+  blade.position.x=1.22; blade.rotation.y=i*Math.PI/2; blade.castShadow=true; fanGroup.add(blade);
 }
 scene.add(fanGroup);
 
 // ---------- lighting ----------
-scene.add(new THREE.HemisphereLight(0xfff7eb,0x5f6a72,2.0));
-const key=new THREE.DirectionalLight(0xfff1dd,2.7);
-key.position.set(-4,8,5);key.castShadow=true;
-key.shadow.mapSize.set(2048,2048);
+scene.add(new THREE.HemisphereLight(0xfff6e8,0x59636b,1.85));
+const key=new THREE.DirectionalLight(0xffead2,3.0);
+key.position.set(-5,8,6); key.castShadow=true;
+key.shadow.mapSize.set(2048,2048); key.shadow.camera.near=.1; key.shadow.camera.far=30;
 scene.add(key);
-const fill=new THREE.PointLight(0xc8dff0,1.0,15);
-fill.position.set(5,4,3);scene.add(fill);
+const fill=new THREE.PointLight(0xc9dff2,1.15,18); fill.position.set(5,4,4); scene.add(fill);
+const warmStrip=new THREE.PointLight(0xffbd72,1.0,9); warmStrip.position.set(4,4,-2.5); scene.add(warmStrip);
+
+// Subtle TV illumination
+const tvGlow=new THREE.PointLight(0x76b8d5,.8,5); tvGlow.position.set(5.55,3.35,-2.4); scene.add(tvGlow);
 
 // ---------- phone orientation ----------
 let deviceReady=false, baseQ=new THREE.Quaternion();
