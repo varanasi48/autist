@@ -304,6 +304,48 @@ function getObjectName(object){
   return null;
 }
 
+let highlightedName = null;
+const originalEmissive = new WeakMap();
+const originalEmissiveIntensity = new WeakMap();
+const originalColor = new WeakMap();
+
+function setObjectHighlight(name){
+  if(highlightedName===name) return;
+  // Restore previous highlight.
+  if(highlightedName){
+    scene.traverse(o=>{
+      if(!o.isMesh) return;
+      const n=getObjectName(o);
+      if(n!==highlightedName) return;
+      const mats=Array.isArray(o.material)?o.material:[o.material];
+      mats.forEach(m=>{
+        if(!m) return;
+        if(originalEmissive.has(m) && m.emissive) m.emissive.copy(originalEmissive.get(m));
+        if(originalEmissiveIntensity.has(m) && 'emissiveIntensity' in m) m.emissiveIntensity=originalEmissiveIntensity.get(m);
+        if(originalColor.has(m) && m.color) m.color.copy(originalColor.get(m));
+      });
+    });
+  }
+  highlightedName=name;
+  if(!name) return;
+  scene.traverse(o=>{
+    if(!o.isMesh || getObjectName(o)!==name) return;
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    mats.forEach(m=>{
+      if(!m) return;
+      if(m.emissive){
+        if(!originalEmissive.has(m)) originalEmissive.set(m,m.emissive.clone());
+        if(!originalEmissiveIntensity.has(m)) originalEmissiveIntensity.set(m,m.emissiveIntensity ?? 1);
+        m.emissive.setHex(0xffd54a);
+        m.emissiveIntensity=0.55;
+      }else if(m.color){
+        if(!originalColor.has(m)) originalColor.set(m,m.color.clone());
+        m.color.lerp(new THREE.Color(0xffd54a),0.28);
+      }
+    });
+  });
+}
+
 function speakObject(name){
   if(!name || speechBusy) return;
   speechBusy=true;
@@ -341,9 +383,12 @@ function updateGaze(){
     gazeSince=0;
     spokenObject=null;
     speechBusy=false;
+    setObjectHighlight(null);
     status.textContent="Look at an object for a moment";
     return;
   }
+
+  setObjectHighlight(name);
 
   if(gazeObject!==name){
     gazeObject=name;
