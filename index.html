@@ -1,0 +1,273 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Living Room 3D — Phase 1</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111}
+canvas{display:block;width:100%;height:100%}
+#start{
+ position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;
+ background:rgba(15,15,15,.94);color:white;font:600 18px system-ui;text-align:center;padding:24px;
+}
+#start button{
+ border:0;border-radius:14px;padding:15px 24px;font-size:18px;font-weight:700;
+ background:#fff;color:#111;margin-top:14px;
+}
+#hint{
+ position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+ z-index:5;color:#fff;background:rgba(0,0,0,.55);padding:9px 14px;border-radius:20px;
+ font:500 13px system-ui;pointer-events:none
+}
+@media (orientation:portrait){
+ #hint:after{content:" • Rotate phone to landscape";font-weight:700}
+}
+</style>
+</head>
+<body>
+<div id="start">
+ <div>
+  <div>Living Room 3D</div>
+  <div style="font-weight:400;font-size:14px;margin-top:7px">
+   Real 3D room • phone movement controls the view
+  </div>
+  <button id="startBtn">Start 3D Room</button>
+ </div>
+</div>
+<div id="hint">Move your phone/head to look around</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xc8d0d2);
+scene.fog = new THREE.Fog(0xc8d0d2, 14, 32);
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, .05, 60);
+camera.position.set(0,1.65,6.8);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// ---------- materials ----------
+const mat = (color, rough=.65, metal=0) =>
+ new THREE.MeshStandardMaterial({color,roughness:rough,metalness:metal});
+
+const wallMat = mat(0xe9e3d9,.9);
+const floorMat = mat(0x9b7759,.72);
+const wood = mat(0x684832,.55);
+const darkWood = mat(0x35261d,.48);
+const fabric = mat(0xb8a99b,.92);
+const cream = mat(0xd7c9b9,.96);
+const rust = mat(0x9b5944,.9);
+const black = mat(0x171717,.28,.35);
+const glass = new THREE.MeshPhysicalMaterial({
+ color:0x9bb8c2,transparent:true,opacity:.26,roughness:.12,metalness:0
+});
+const green = mat(0x3f6b48,.95);
+const leaf2 = mat(0x66885b,.95);
+const ceramic = mat(0xd7d0c2,.7);
+
+// ---------- helpers ----------
+function box(name,x,y,z,sx,sy,sz,material,cast=true){
+ const g=new THREE.BoxGeometry(sx,sy,sz);
+ const m=new THREE.Mesh(g,material);
+ m.name=name;m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;scene.add(m);return m;
+}
+function cyl(name,x,y,z,r,h,material,seg=32){
+ const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),material);
+ m.name=name;m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
+}
+function sphere(name,x,y,z,r,material){
+ const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,16),material);
+ m.name=name;m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
+}
+function plant(x,z,scale=1){
+ cyl("Plant pot",x,.48,z,.34,.62,ceramic);
+ for(let i=0;i<8;i++){
+  const a=i*Math.PI/4;
+  const leaf=new THREE.Mesh(new THREE.SphereGeometry(.22,12,8),green);
+  leaf.scale.set(.7,1.7,.35);leaf.position.set(x+Math.cos(a)*.25,.98,z+Math.sin(a)*.25);
+  leaf.rotation.z=-Math.cos(a)*.55;leaf.rotation.x=Math.sin(a)*.35;
+  leaf.castShadow=true;scene.add(leaf);
+ }
+ cyl("Plant stem",x,.95,z,.055,1.0,darkWood,12);
+}
+
+// ---------- room shell ----------
+box("Floor",0,-.12,0,18,.24,18,floorMat,false);
+box("Back wall",0,4,-3.8,18,8,.22,wallMat,false);
+box("Left wall",-8,4,0,.22,8,15,wallMat,false);
+box("Right wall",8,4,0,.22,8,15,wallMat,false);
+box("Ceiling",0,8,0,18,.18,18,wallMat,false);
+
+// wood feature wall
+for(let x=-4.9;x<=4.9;x+=.32) box("Wood slat",x,3.15,-3.62,.13,6.2,.12,darkWood,false);
+box("Feature backing",0,3.15,-3.55,10.3,6.25,.08,wood,false);
+
+// ---------- window + balcony ----------
+box("Window frame",-5.55,3.55,-3.42,3.9,4.0,.16,black,false);
+box("Window glass",-5.55,3.55,-3.32,3.55,3.65,.05,glass,false);
+for(const x of [-7.25,-5.55,-3.85]) box("Window mullion",x,3.55,-3.24,.07,3.65,.08,black,false);
+box("Window sill",-5.55,1.7,-3.25,4.0,.18,.38,wood,false);
+for(let i=0;i<6;i++){
+ const b=new THREE.Mesh(new THREE.BoxGeometry(.09,3.7,.08),cream);
+ b.position.set(-7.35+i*.72,3.5,-3.05);b.castShadow=true;scene.add(b);
+}
+
+// balcony suggestion
+box("Balcony rail",-5.55,1.35,-2.65,4.2,.12,.12,black);
+for(let x=-7.35;x<=-3.75;x+=.55) cyl("Balcony rail post",x,.75,-2.65,.035,1.25,black,12);
+
+// ---------- door ----------
+box("Door",5.25,3.25,-3.55,2.35,5.9,.18,darkWood,false);
+box("Door inset",5.25,3.25,-3.43,1.9,5.35,.08,wood,false);
+cyl("Door handle",6.0,3.15,-3.25,.075,.28,black,20).rotation.z=Math.PI/2;
+
+// ---------- TV wall ----------
+box("TV console",3.35,.72,-3.15,5.5,1.05,.72,darkWood);
+box("TV",3.35,2.55,-3.15,4.4,2.5,.16,black,false);
+box("TV screen",3.35,2.55,-3.04,4.05,2.12,.025,mat(0x243e45,.2),false);
+box("TV stand",3.35,1.25,-3.0,2.0,.12,.65,black);
+for(let x=1.2;x<5.5;x+=.55) box("Shelf slat",x,3.9,-3.12,.09,1.1,.09,wood,false);
+
+// TV scenic glow
+const tvLight=new THREE.PointLight(0x9bbfc7,1.4,5);
+tvLight.position.set(3.35,2.55,-2.3);scene.add(tvLight);
+
+// ---------- sectional sofa ----------
+box("Sofa",-.95,.95,1.55,6.0,1.05,2.15,fabric);
+box("Sofa back",-.95,1.85,.72,6.0,2.0,.5,fabric);
+box("Sofa arm",-3.75,1.25,1.55,.48,1.7,2.15,cream);
+box("Sofa arm",1.85,1.25,1.55,.48,1.7,2.15,cream);
+for(let x=-3.0;x<=1.0;x+=1.05){
+ box("Cushion",x,2.0,1.08,.88,.72,.38,cream);
+}
+box("Throw",-1.0,1.5,.92,1.15,.9,.08,rust);
+
+// ---------- coffee table ----------
+box("Table",-.05,.72,-.05,3.7,.18,1.85,wood);
+for(const x of [-1.55,1.45]) for(const z of [-.65,.65]) cyl("Table leg",x,.34,z,.12,.72,darkWood,20);
+box("Table lower shelf",-.05,.28,-.05,2.8,.12,1.25,darkWood);
+cyl("Decor bowl",-.35,.9,-.05,.28,.10,ceramic);
+for(let i=0;i<3;i++) box("Book",.5,.86+i*.035,.2,.7,.06,.48,[cream,rust,wood][i]);
+
+// ---------- chair ----------
+box("Chair",-5.45,.85,.55,2.05,.8,1.9,rust);
+box("Chair back",-5.45,1.8,-.2,2.05,2.0,.42,rust);
+box("Chair arm",-6.25,1.25,.55,.3,1.35,1.9,rust);
+box("Chair arm",-4.65,1.25,.55,.3,1.35,1.9,rust);
+box("Chair cushion",-5.45,1.25,.35,1.45,.22,1.35,cream);
+
+// ---------- rug ----------
+const rug=new THREE.Mesh(new THREE.BoxGeometry(7.2,.035,4.8),mat(0xb5a08b,1));
+rug.position.set(-.1,.02,.2);rug.receiveShadow=true;scene.add(rug);
+
+// ---------- lamp ----------
+cyl("Lamp stand",-6.8,1.65,-1.2,.055,3.2,black,20);
+const shade=new THREE.Mesh(new THREE.CylinderGeometry(.42,.7,.65,32,true),cream);
+shade.position.set(-6.8,3.25,-1.2);shade.castShadow=true;scene.add(shade);
+const bulb=new THREE.PointLight(0xffd6a0,1.8,5);bulb.position.set(-6.8,3.0,-1.2);scene.add(bulb);
+
+// ---------- plants ----------
+plant(6.55,1.1,1);
+plant(-7.0,2.6,.8);
+
+// ---------- ceiling fan ----------
+const fanGroup=new THREE.Group(); fanGroup.position.set(0,7.45,1);
+const motor=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.22,24),black);
+fanGroup.add(motor);
+for(let i=0;i<4;i++){
+ const blade=new THREE.Mesh(new THREE.BoxGeometry(2.4,.06,.28),wood);
+ blade.position.x=1.25;blade.rotation.y=i*Math.PI/2;blade.castShadow=true;fanGroup.add(blade);
+}
+scene.add(fanGroup);
+
+// ---------- lighting ----------
+scene.add(new THREE.HemisphereLight(0xfff7eb,0x5f6a72,2.0));
+const key=new THREE.DirectionalLight(0xfff1dd,2.7);
+key.position.set(-4,8,5);key.castShadow=true;
+key.shadow.mapSize.set(2048,2048);
+scene.add(key);
+const fill=new THREE.PointLight(0xc8dff0,1.0,15);
+fill.position.set(5,4,3);scene.add(fill);
+
+// ---------- phone orientation ----------
+let deviceReady=false, baseQ=new THREE.Quaternion();
+const euler=new THREE.Euler(0,0,0,'YXZ');
+const q0=new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5));
+const zee=new THREE.Vector3(0,0,1);
+const q1=new THREE.Quaternion();
+
+function setCameraFromOrientation(alpha,beta,gamma,orient){
+ euler.set(beta,alpha,-gamma,'YXZ');
+ camera.quaternion.setFromEuler(euler);
+ camera.quaternion.multiply(q0);
+ camera.quaternion.multiply(q1.setFromAxisAngle(zee,-orient));
+}
+
+function onOrientation(e){
+ if(e.alpha==null)return;
+ const orient=(screen.orientation?.angle||window.orientation||0)*Math.PI/180;
+ setCameraFromOrientation(
+  THREE.MathUtils.degToRad(e.alpha),
+  THREE.MathUtils.degToRad(e.beta),
+  THREE.MathUtils.degToRad(e.gamma),
+  orient
+ );
+}
+function recenter(){
+ baseQ.copy(camera.quaternion).invert();
+}
+function startMotion(){
+ window.addEventListener('deviceorientation',onOrientation,true);
+ if(screen.orientation?.lock) screen.orientation.lock('landscape').catch(()=>{});
+ deviceReady=true;
+ document.getElementById('start').style.display='none';
+}
+
+document.getElementById('startBtn').onclick=async()=>{
+ try{
+  if(typeof DeviceOrientationEvent!=='undefined' &&
+     typeof DeviceOrientationEvent.requestPermission==='function'){
+    const p=await DeviceOrientationEvent.requestPermission();
+    if(p!=='granted') return;
+  }
+  startMotion();
+ }catch(e){startMotion();}
+};
+
+// Desktop fallback: drag to look around.
+let dragging=false,lastX=0,lastY=0,yaw=0,pitch=0;
+renderer.domElement.addEventListener('pointerdown',e=>{
+ dragging=true;lastX=e.clientX;lastY=e.clientY;
+});
+window.addEventListener('pointerup',()=>dragging=false);
+window.addEventListener('pointermove',e=>{
+ if(!dragging || deviceReady)return;
+ yaw-=(e.clientX-lastX)*.004;
+ pitch-=(e.clientY-lastY)*.004;
+ pitch=Math.max(-1.25,Math.min(1.25,pitch));
+ lastX=e.clientX;lastY=e.clientY;
+ camera.rotation.set(pitch,yaw,0,'YXZ');
+});
+
+function animate(){
+ requestAnimationFrame(animate);
+ renderer.render(scene,camera);
+}
+animate();
+
+addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
