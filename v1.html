@@ -1,0 +1,461 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Living Room 3D — Real Room Layout V5</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111}
+canvas{display:block;width:100%;height:100%}
+#start{
+ position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;
+ background:rgba(15,15,15,.94);color:white;font:600 18px system-ui;text-align:center;padding:24px;
+}
+#start button{
+ border:0;border-radius:14px;padding:15px 24px;font-size:18px;font-weight:700;
+ background:#fff;color:#111;margin-top:14px;
+}
+#hint{
+ position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+ z-index:5;color:#fff;background:rgba(0,0,0,.55);padding:9px 14px;border-radius:20px;
+ font:500 13px system-ui;pointer-events:none
+}
+@media (orientation:portrait){
+ #hint:after{content:" • Rotate phone to landscape";font-weight:700}
+}
+</style>
+</head>
+<body>
+<div id="start">
+ <div>
+  <div>Living Room 3D</div>
+  <div style="font-weight:400;font-size:14px;margin-top:7px">
+   Real 3D room • phone movement controls the view
+  </div>
+  <button id="startBtn">Start 3D Room</button>
+ </div>
+</div>
+
+<button id="recenterBtn" type="button" aria-label="Re-center view">↻ Re-center</button>
+<style>
+#recenterBtn{
+ position:fixed;right:18px;top:18px;z-index:20;border:0;border-radius:14px;
+ padding:11px 14px;background:rgba(0,0,0,.62);color:#fff;
+ font:700 14px system-ui,sans-serif;backdrop-filter:blur(5px)
+}
+</style>
+<div id="interactionStatus" aria-live="polite">
+  Look at an object for a moment
+</div>
+<style>
+#interactionStatus{
+ position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
+ z-index:20;padding:10px 18px;border-radius:22px;
+ background:rgba(0,0,0,.62);color:#fff;
+ font:600 15px system-ui,sans-serif;pointer-events:none;
+ backdrop-filter:blur(5px);white-space:nowrap;
+}
+</style>
+
+<div id="hint">Move your phone/head to look around</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xc8d0d2);
+scene.fog = new THREE.Fog(0xc8d0d2, 14, 32);
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, .05, 60);
+camera.position.set(0,1.65,6.6);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// ---------- realistic materials ----------
+const mat = (color, rough=.65, metal=0) =>
+  new THREE.MeshStandardMaterial({color, roughness:rough, metalness:metal});
+
+const wallMat = mat(0xe8e0d5,.92);
+const plaster = mat(0xd9d0c4,.98);
+const floorMat = mat(0xddd4c7,.34);
+const marble = mat(0xd8d1c6,.25);
+const wood = mat(0x6b452d,.48);
+const walnut = mat(0x4b2d1d,.40);
+const slat = mat(0x3a2418,.44);
+const fabric = mat(0xb8aa9b,1);
+const fabricLight = mat(0xd0c2b3,.98);
+const rust = mat(0x9a5941,.88);
+const black = mat(0x121212,.23,.55);
+const metal = mat(0x6b6b67,.22,.78);
+const glass = new THREE.MeshPhysicalMaterial({
+  color:0xaec5cc, transparent:true, opacity:.22, roughness:.08, metalness:0
+});
+const leaf = mat(0x3e6844,.96);
+const leafLight = mat(0x6d8a5b,.96);
+const ceramic = mat(0xd8d0c4,.72);
+const warm = mat(0xe5bd76,.55,.05);
+
+function box(name,x,y,z,sx,sy,sz,material,cast=true){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),material);
+  m.name=name; m.position.set(x,y,z); m.castShadow=cast; m.receiveShadow=true;
+  scene.add(m); return m;
+}
+function cyl(name,x,y,z,r,h,material,seg=32){
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),material);
+  m.name=name; m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); return m;
+}
+function sphere(name,x,y,z,r,material){
+  const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,16),material);
+  m.name=name; m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); return m;
+}
+function roundedBox(name,x,y,z,sx,sy,sz,material,r=.12){
+  const shape=new THREE.Shape();
+  const w=sx/2,h=sy/2;
+  shape.moveTo(-w+r,-h); shape.lineTo(w-r,-h);
+  shape.quadraticCurveTo(w,-h,w,-h+r); shape.lineTo(w,h-r);
+  shape.quadraticCurveTo(w,h,w-r,h); shape.lineTo(-w+r,h);
+  shape.quadraticCurveTo(-w,h,-w,h-r); shape.lineTo(-w,-h+r);
+  shape.quadraticCurveTo(-w,-h,-w+r,-h);
+  const geo=new THREE.ExtrudeGeometry(shape,{depth:sz,bevelEnabled:true,bevelSize:.035,bevelThickness:.035,bevelSegments:2});
+  geo.center();
+  const m=new THREE.Mesh(geo,material);
+  m.name=name; m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); return m;
+}
+function plant(x,z,s=1){
+  cyl("Plant pot",x,.43,z,.34*s,.55*s,ceramic);
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI*2/12;
+    const p=new THREE.Mesh(new THREE.SphereGeometry(.22*s,14,10), i%3?leaf:leafLight);
+    p.scale.set(.55,1.8,.30);
+    p.position.set(x+Math.cos(a)*.25*s,.94*s,z+Math.sin(a)*.25*s);
+    p.rotation.z=-Math.cos(a)*.6; p.rotation.x=Math.sin(a)*.35;
+    p.castShadow=true; scene.add(p);
+  }
+}
+
+// ---------- architectural shell ----------
+box("Floor",0,-.12,0,18,.24,18,marble,false);
+box("Back wall",0,4,-4.2,18,8,.22,wallMat,false);
+box("Left wall",-8,4,0,.22,8,16,wallMat,false);
+box("Right wall",8,4,0,.22,8,16,wallMat,false);
+box("Ceiling",0,8,0,18,.18,18,plaster,false);
+
+// recessed ceiling trim
+box("Ceiling border",0,7.72,-3.85,17.2,.12,.18,wood,false);
+box("Ceiling border",0,7.72,3.75,17.2,.12,.18,wood,false);
+box("Ceiling border",-7.75,7.72,0,.18,.12,7.7,wood,false);
+box("Ceiling border",7.75,7.72,0,.18,.12,7.7,wood,false);
+
+// ---------- window ----------
+box("Window frame",-5.25,3.65,-4.03,4.55,4.45,.18,black,false);
+box("Window glass",-5.25,3.65,-3.90,4.18,4.05,.05,glass,false);
+for(const x of [-7.32,-5.25,-3.18]) box("Window mullion",x,3.65,-3.82,.07,4.0,.08,black,false);
+box("Window sill",-5.25,1.53,-3.76,4.7,.18,.42,wood,false);
+
+// Curtains with layered panels
+box("Curtain L",-7.65,3.7,-3.62,.55,4.65,.18,fabricLight,false);
+box("Curtain R",-2.85,3.7,-3.62,.55,4.65,.18,fabricLight,false);
+
+// ---------- door ----------
+box("Door surround",2.25,3.2,-4.02,2.65,6.25,.22,wood,false);
+box("Door",2.25,3.2,-3.87,2.22,5.82,.16,walnut,false);
+box("Door inset",2.25,3.25,-3.75,1.78,4.98,.06,wood,false);
+cyl("Door handle",3.0,3.15,-3.55,.075,.28,metal,20).rotation.z=Math.PI/2;
+
+// ---------- TV feature wall ----------
+for(let x=3.8;x<=7.55;x+=.28) box("Wood slat",x,3.55,-3.83,.11,7.1,.11,slat,false);
+box("TV stone panel",5.55,3.05,-3.72,4.75,4.25,.09,mat(0xb9afa1,.76),false);
+box("TV frame",5.55,3.35,-3.57,4.35,2.48,.13,black,false);
+const tvScreen=box("Television",5.55,3.35,-3.48,4.05,2.18,.025,mat(0x173c52,.18),false);
+box("TV console",5.55,.78,-3.45,5.0,1.0,.72,walnut);
+box("Console top",5.55,1.33,-3.43,5.2,.14,.82,wood);
+for(let x=3.2;x<=7.85;x+=1.15) box("Console divider",x,.75,-3.05,.035,.65,.03,black,false);
+
+// illuminated shelves
+box("Shelf tower",2.35,3.6,-3.63,.65,6.5,.30,walnut,false);
+for(let y=1.45;y<=6.0;y+=1.25){
+  box("Shelf",2.35,y,-3.45,1.55,.10,.62,wood,false);
+  const l=new THREE.PointLight(0xffbd72,.42,2.2); l.position.set(2.35,y+.16,-3.0); scene.add(l);
+}
+for(let y=1.65;y<=5.75;y+=1.25){
+  plant(2.35,y>4?-.0:-.05,.45);
+}
+
+// ---------- realistic living-room furniture layout ----------
+// TV/media wall is the focal wall at the back.
+// Sofa is parallel to that wall and directly faces the TV.
+// Seating, table, rug and circulation are arranged like a normal living room.
+
+const sofaZ=1.75;
+const sofaX=-1.25;
+
+roundedBox("Sofa base",sofaX,.93,sofaZ,6.2,.92,2.18,fabric,.16);
+roundedBox("Sofa back",sofaX,1.82,sofaZ+.78,6.2,1.82,.52,fabric,.18);
+roundedBox("Sofa arm L",sofaX-2.88,1.30,sofaZ,.48,1.55,2.18,fabricLight,.14);
+roundedBox("Sofa arm R",sofaX+2.88,1.30,sofaZ,.48,1.55,2.18,fabricLight,.14);
+
+for(let x=sofaX-2.0;x<=sofaX+2.0;x+=1.0)
+  roundedBox("Sofa cushion",x,1.94,sofaZ-.35,.88,.68,.42,fabricLight,.10);
+
+roundedBox("Throw",sofaX-.9,1.42,sofaZ-.78,1.05,.78,.08,rust,.04);
+
+// Rotate the complete sofa assembly 90 degrees around its center.
+const sofaParts = scene.children.filter(o => o.name && o.name.startsWith("Sofa"));
+for (const part of sofaParts) {
+  const dx = part.position.x - sofaX;
+  const dz = part.position.z - sofaZ;
+  part.position.x = sofaX - dz;
+  part.position.z = sofaZ + dx;
+  part.rotation.y += Math.PI / 2;
+}
+
+// Coffee table placed immediately in front of the rotated sofa.
+const tableX=1.15;
+const tableZ=sofaZ;
+
+box("Table",tableX,.73,tableZ,1.85,.18,3.75,wood);
+for(const x of [tableX-.68,tableX+.68])
+  for(const z of [tableZ-1.58,tableZ+1.48])
+    cyl("Table leg",x,.34,z,.105,.72,black,20);
+
+box("Table lower shelf",tableX,.28,tableZ,1.25,.11,2.9,walnut);
+cyl("Bowl",tableX-.10,.88,tableZ-.25,.30,.10,ceramic);
+for(let i=0;i<3;i++)
+  box("Book",tableX+.18,.84+i*.05,tableZ+.55,.48,.055,.75,[fabricLight,fabricLight,wood][i%3]);
+cyl("Cup",tableX-.25,1.00,tableZ+.75,.12,.12,ceramic,24);
+
+// Accent chair sits perpendicular to the sofa, creating a natural conversation
+// arrangement while leaving the TV wall completely unobstructed.
+const chairX=-6.05, chairZ=.35;
+
+const chairBase=roundedBox("Chair",chairX,.85,chairZ,2.05,.82,1.90,rust,.16);
+chairBase.rotation.y=-Math.PI/2;
+
+const chairBack=roundedBox("Chair back",chairX,1.83,chairZ+.72,2.05,2.0,.43,rust,.16);
+chairBack.rotation.y=-Math.PI/2;
+
+roundedBox("Chair cushion",chairX,1.28,chairZ-.25,1.48,.20,1.28,fabricLight,.10);
+roundedBox("Chair pillow",chairX,1.73,chairZ+.15,.78,.58,.16,rust,.12);
+
+// ---------- rug ----------
+// ---------- rug ----------
+const rugMat=mat(0x9d8977,.97);
+const rug=new THREE.Mesh(new THREE.BoxGeometry(7.8,.045,5.0),rugMat);
+rug.position.set(-1.25,.025,.65);rug.receiveShadow=true;scene.add(rug);
+
+// ---------- lamp ----------
+cyl("Lamp stand",-6.65,1.65,3.0,.055,3.2,black,20);
+const shade=new THREE.Mesh(new THREE.CylinderGeometry(.42,.72,.68,40,true),fabricLight);
+shade.position.set(-6.65,3.30,3.0);shade.castShadow=true;scene.add(shade);
+const bulb=new THREE.PointLight(0xffd3a0,2.1,5); bulb.position.set(-6.65,3.0,3.0); scene.add(bulb);
+
+// ---------- plants ----------
+plant(6.65,2.25,1.1);
+plant(-7.0,-2.45,.9);
+plant(7.0,-2.5,.75);
+
+// ---------- ceiling fan ----------
+const fanGroup=new THREE.Group(); fanGroup.position.set(-.2,7.42,.8);
+fanGroup.add(new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.24,24),black));
+for(let i=0;i<4;i++){
+  const blade=new THREE.Mesh(new THREE.BoxGeometry(2.45,.06,.30),wood);
+  blade.position.x=1.22; blade.rotation.y=i*Math.PI/2; blade.castShadow=true; fanGroup.add(blade);
+}
+scene.add(fanGroup);
+
+// ---------- lighting ----------
+scene.add(new THREE.HemisphereLight(0xfff6e8,0x59636b,1.85));
+const key=new THREE.DirectionalLight(0xffead2,3.0);
+key.position.set(-5,8,6); key.castShadow=true;
+key.shadow.mapSize.set(2048,2048); key.shadow.camera.near=.1; key.shadow.camera.far=30;
+scene.add(key);
+const fill=new THREE.PointLight(0xc9dff2,1.15,18); fill.position.set(5,4,4); scene.add(fill);
+const warmStrip=new THREE.PointLight(0xffbd72,1.0,9); warmStrip.position.set(4,4,-2.5); scene.add(warmStrip);
+
+// Subtle TV illumination
+const tvGlow=new THREE.PointLight(0x76b8d5,.8,5); tvGlow.position.set(5.55,3.35,-2.4); scene.add(tvGlow);
+
+
+// ---------- gaze interaction ----------
+const raycaster = new THREE.Raycaster();
+const gazeCenter = new THREE.Vector2(0,0);
+let gazeObject = null;
+let gazeSince = 0;
+let spokenObject = null;
+let speechBusy = false;
+
+const objectNames = {
+  "Sofa":"Sofa",
+  "Table":"Table",
+  "Television":"Television",
+  "Door":"Door",
+  "Window":"Window",
+  "Chair":"Chair",
+  "Lamp":"Lamp",
+  "Fan":"Fan"
+};
+
+function getObjectName(object){
+  let o=object;
+  while(o && o!==scene){
+    if(objectNames[o.name]) return objectNames[o.name];
+    const n=o.name||"";
+    for(const key of Object.keys(objectNames)){
+      if(n===key || n.startsWith(key+" ")) return objectNames[key];
+    }
+    o=o.parent;
+  }
+  return null;
+}
+
+function speakObject(name){
+  if(!name || speechBusy) return;
+  speechBusy=true;
+  spokenObject=name;
+  const status=document.getElementById("interactionStatus");
+  status.textContent=name;
+  if("speechSynthesis" in window){
+    window.speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(name);
+    u.rate=.82;
+    u.pitch=1;
+    u.volume=1;
+    u.onend=()=>{speechBusy=false;};
+    u.onerror=()=>{speechBusy=false;};
+    window.speechSynthesis.speak(u);
+  }else{
+    speechBusy=false;
+  }
+}
+
+function updateGaze(){
+  raycaster.setFromCamera(gazeCenter,camera);
+  const hits=raycaster.intersectObjects(scene.children,true);
+  let name=null;
+
+  for(const hit of hits){
+    const n=getObjectName(hit.object);
+    if(n){ name=n; break; }
+  }
+
+  const status=document.getElementById("interactionStatus");
+
+  if(!name){
+    gazeObject=null;
+    gazeSince=0;
+    spokenObject=null;
+    speechBusy=false;
+    status.textContent="Look at an object for a moment";
+    return;
+  }
+
+  if(gazeObject!==name){
+    gazeObject=name;
+    gazeSince=performance.now();
+    spokenObject=null;
+    speechBusy=false;
+    status.textContent=name;
+    return;
+  }
+
+  status.textContent=name;
+
+  if(!spokenObject && performance.now()-gazeSince>=900){
+    speakObject(name);
+  }
+}
+
+// ---------- phone orientation ----------
+
+let deviceReady=false, baseQ=new THREE.Quaternion();
+const euler=new THREE.Euler(0,0,0,'YXZ');
+const q0=new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5));
+const zee=new THREE.Vector3(0,0,1);
+const q1=new THREE.Quaternion();
+
+function setCameraFromOrientation(alpha,beta,gamma,orient){
+ euler.set(beta,alpha,-gamma,'YXZ');
+ camera.quaternion.setFromEuler(euler);
+ camera.quaternion.multiply(q0);
+ camera.quaternion.multiply(q1.setFromAxisAngle(zee,-orient));
+ // Apply the user-selected re-center offset after sensor orientation.
+ camera.quaternion.premultiply(baseQ);
+}
+
+function onOrientation(e){
+ if(e.alpha==null)return;
+ const orient=(screen.orientation?.angle||window.orientation||0)*Math.PI/180;
+ setCameraFromOrientation(
+  THREE.MathUtils.degToRad(e.alpha),
+  THREE.MathUtils.degToRad(e.beta),
+  THREE.MathUtils.degToRad(e.gamma),
+  orient
+ );
+}
+function recenter(){
+ // Capture current view as the new forward direction.
+ const current = camera.quaternion.clone();
+ baseQ.copy(current).invert();
+ document.getElementById("interactionStatus").textContent="Re-centered";
+ setTimeout(()=>{
+   if(!gazeObject) document.getElementById("interactionStatus").textContent="Look at an object for a moment";
+ },900);
+}
+function startMotion(){
+ window.addEventListener('deviceorientation',onOrientation,true);
+ if(screen.orientation?.lock) screen.orientation.lock('landscape').catch(()=>{});
+ deviceReady=true;
+ document.getElementById('start').style.display='none';
+}
+
+document.getElementById("recenterBtn").addEventListener("click",recenter);
+
+document.getElementById('startBtn').onclick=async()=>{
+ try{
+  if(typeof DeviceOrientationEvent!=='undefined' &&
+     typeof DeviceOrientationEvent.requestPermission==='function'){
+    const p=await DeviceOrientationEvent.requestPermission();
+    if(p!=='granted') return;
+  }
+  startMotion();
+ }catch(e){startMotion();}
+};
+
+// Desktop fallback: drag to look around.
+let dragging=false,lastX=0,lastY=0,yaw=0,pitch=0;
+renderer.domElement.addEventListener('pointerdown',e=>{
+ dragging=true;lastX=e.clientX;lastY=e.clientY;
+});
+window.addEventListener('pointerup',()=>dragging=false);
+window.addEventListener('pointermove',e=>{
+ if(!dragging || deviceReady)return;
+ yaw-=(e.clientX-lastX)*.004;
+ pitch-=(e.clientY-lastY)*.004;
+ pitch=Math.max(-1.25,Math.min(1.25,pitch));
+ lastX=e.clientX;lastY=e.clientY;
+ camera.rotation.set(pitch,yaw,0,'YXZ');
+});
+
+function animate(){
+ requestAnimationFrame(animate);
+ updateGaze();
+ renderer.render(scene,camera);
+}
+animate();
+
+addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
