@@ -32,12 +32,24 @@ canvas{display:block;width:100%;height:100%}
   <div style="font-weight:400;font-size:14px;margin-top:7px">
    Real 3D room • phone movement controls the view
   </div>
-  <button id="startBtn">Start 3D Room</button>
+  <button id="startBtn">Enter 3D Room</button>
  </div>
 </div>
 
 <button id="recenterBtn" type="button" aria-label="Re-center view">↻ Re-center</button>
+<button id="kidTrigger" type="button">▶ Start Kid Entry</button>
+<div id="sessionStatus">Waiting for session trigger</div>
 <style>
+#kidTrigger{
+ position:fixed;left:18px;top:18px;z-index:20;border:0;border-radius:14px;
+ padding:11px 14px;background:rgba(255,255,255,.94);color:#111;
+ font:700 14px system-ui,sans-serif;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.18)
+}
+#kidTrigger:disabled{opacity:.55;cursor:default}
+#sessionStatus{
+ position:fixed;left:18px;top:64px;z-index:20;color:#fff;background:rgba(0,0,0,.58);
+ padding:7px 10px;border-radius:10px;font:600 12px system-ui,sans-serif;pointer-events:none
+}
 #recenterBtn{
  position:fixed;right:18px;top:18px;z-index:20;border:0;border-radius:14px;
  padding:11px 14px;background:rgba(0,0,0,.62);color:#fff;
@@ -60,6 +72,7 @@ canvas{display:block;width:100%;height:100%}
 <div id="hint">Move your phone/head to look around</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc8d0d2);
@@ -176,59 +189,53 @@ const kid = new THREE.Group();
 kid.name = "Kid";
 scene.add(kid);
 kid.position.set(4.95,0,4.15);
-kid.scale.setScalar(1.12);
+kid.visible = false;
 
-const skin = mat(0xc98f6d,.82);
-const hair = mat(0x241b17,.72);
-const shirt = mat(0xb7b1aa,.94);
-const jeans = mat(0x29476b,.86);
-const shoe = mat(0xf0eee8,.72);
-const tiger = mat(0xa96a38,.78);
-
-function kidPart(geo, material, x,y,z){
-  const m=new THREE.Mesh(geo,material);
-  m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true; kid.add(m); return m;
+// Real rigged humanoid GLB (CC0). Loaded remotely so this remains a single GitHub Pages HTML file.
+const REAL_CHARACTER_URL = "https://raw.githubusercontent.com/programasweights/avatar/main/public/assets/character.glb";
+let characterReady=false;
+let characterMixer=null;
+let characterRoot=null;
+function fitCharacter(root){
+  const box=new THREE.Box3().setFromObject(root);
+  const size=box.getSize(new THREE.Vector3());
+  const center=box.getCenter(new THREE.Vector3());
+  root.position.x-=center.x; root.position.z-=center.z; root.position.y-=box.min.y;
+  if(size.y>0) root.scale.setScalar(1.72/size.y);
 }
-
-const kidBody=kidPart(new THREE.CapsuleGeometry(.43,.82,8,16),shirt,0,1.12,0);
-const kidHead=kidPart(new THREE.SphereGeometry(.43,28,20),skin,0,2.15,0);
-const hairCap=kidPart(new THREE.SphereGeometry(.445,28,18,0,Math.PI*2,0,Math.PI*.48),hair,0,2.27,0);
-
-// simple tiger graphic on shirt
-const tigerFace=kidPart(new THREE.SphereGeometry(.17,20,14),tiger,0,1.28,-.40);
-for(const dx of [-.07,.07]) kidPart(new THREE.BoxGeometry(.025,.12,.025),hair,dx,1.38,-.555);
-
-const leftArm=kidPart(new THREE.CapsuleGeometry(.12,.58,6,12),shirt,-.52,1.18,0);
-const rightArm=kidPart(new THREE.CapsuleGeometry(.12,.58,6,12),shirt,.52,1.18,0);
-const leftLeg=kidPart(new THREE.CapsuleGeometry(.15,.72,6,12),jeans,-.23,.53,0);
-const rightLeg=kidPart(new THREE.CapsuleGeometry(.15,.72,6,12),jeans,.23,.53,0);
-const leftShoe=kidPart(new THREE.BoxGeometry(.28,.16,.55),shoe,-.23,.12,-.08);
-const rightShoe=kidPart(new THREE.BoxGeometry(.28,.16,.55),shoe,.23,.12,-.08);
-
-// keep the face looking toward the room/camera direction
-kidHead.rotation.y=.15;
+const loader=new THREE.GLTFLoader();
+loader.load(REAL_CHARACTER_URL,(gltf)=>{
+  characterRoot=gltf.scene; fitCharacter(characterRoot);
+  characterRoot.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+  kid.add(characterRoot); characterReady=true;
+  if(gltf.animations&&gltf.animations.length){characterMixer=new THREE.AnimationMixer(characterRoot);characterMixer.clipAction(gltf.animations[0]).play();}
+  document.getElementById('sessionStatus').textContent='Real 3D character ready — press Start Kid Entry';
+},undefined,()=>{
+  document.getElementById('sessionStatus').textContent='Real 3D character failed to load — check internet connection';
+});
 
 const kidStart = new THREE.Vector3(4.95,0,4.15);
 const kidEnd = new THREE.Vector3(1.65,0,2.55);
 let kidWalkStart=null;
 let kidFinished=false;
+let kidTriggered=false;
 
 function animateKid(now){
+  if(characterMixer) characterMixer.update(0.016);
+  if(!kidTriggered || !characterReady) return;
   if(kidWalkStart===null) kidWalkStart=now;
   const elapsed=(now-kidWalkStart)/1000;
   const duration=5.0;
   const t=Math.min(elapsed/duration,1);
   const ease=t*t*(3-2*t);
   kid.position.lerpVectors(kidStart,kidEnd,ease);
-  const dx=kidEnd.x-kidStart.x, dz=kidEnd.z-kidStart.z;
+  const dx=kidEnd.x-kidStart.x,dz=kidEnd.z-kidStart.z;
   kid.rotation.y=Math.atan2(dx,dz);
-  const step=t<1 ? Math.sin(elapsed*8.5) : 0;
-  leftArm.rotation.z=step*.22; rightArm.rotation.z=-step*.22;
-  leftLeg.rotation.x=-step*.38; rightLeg.rotation.x=step*.38;
-  if(t>=1){
+  if(t>=1 && !kidFinished){
     kidFinished=true;
-    leftArm.rotation.z=rightArm.rotation.z=0;
-    leftLeg.rotation.x=rightLeg.rotation.x=0;
+    document.getElementById('kidTrigger').disabled=true;
+    document.getElementById('kidTrigger').textContent='✓ Kid Entered';
+    document.getElementById('sessionStatus').textContent='Real 3D character is in the room — interaction ready';
   }
 }
 
@@ -518,9 +525,22 @@ function startMotion(){
  if(screen.orientation?.lock) screen.orientation.lock('landscape').catch(()=>{});
  deviceReady=true;
  document.getElementById('start').style.display='none';
+ document.getElementById('sessionStatus').textContent='Room ready — press Start Kid Entry';
 }
 
 document.getElementById("recenterBtn").addEventListener("click",recenter);
+
+document.getElementById('kidTrigger').addEventListener('click',()=>{
+  if(!deviceReady) return;
+  if(!characterReady){ document.getElementById('sessionStatus').textContent='Real 3D character is still loading…'; return; }
+  kidTriggered=true;
+  kidWalkStart=null;
+  kidFinished=false;
+  kid.visible=true;
+  document.getElementById('kidTrigger').disabled=true;
+  document.getElementById('kidTrigger').textContent='Kid entering…';
+  document.getElementById('sessionStatus').textContent='Session started — watch the child enter';
+});
 
 document.getElementById('startBtn').onclick=async()=>{
  try{
