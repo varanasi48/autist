@@ -175,7 +175,8 @@ cyl("Door handle",7.48,3.15,3.72,.075,.28,metal,20).rotation.x=Math.PI/2;
 const kid = new THREE.Group();
 kid.name = "Kid";
 scene.add(kid);
-kid.position.set(6.65,0,4.15);
+kid.position.set(4.95,0,4.15);
+kid.scale.setScalar(1.12);
 
 const skin = mat(0xc98f6d,.82);
 const hair = mat(0x241b17,.72);
@@ -207,15 +208,15 @@ const rightShoe=kidPart(new THREE.BoxGeometry(.28,.16,.55),shoe,.23,.12,-.08);
 // keep the face looking toward the room/camera direction
 kidHead.rotation.y=.15;
 
-const kidStart = new THREE.Vector3(6.65,0,4.15);
-const kidEnd = new THREE.Vector3(2.55,0,2.55);
+const kidStart = new THREE.Vector3(4.95,0,4.15);
+const kidEnd = new THREE.Vector3(1.65,0,2.55);
 let kidWalkStart=null;
 let kidFinished=false;
 
 function animateKid(now){
   if(kidWalkStart===null) kidWalkStart=now;
   const elapsed=(now-kidWalkStart)/1000;
-  const duration=6.5;
+  const duration=5.0;
   const t=Math.min(elapsed/duration,1);
   const ease=t*t*(3-2*t);
   kid.position.lerpVectors(kidStart,kidEnd,ease);
